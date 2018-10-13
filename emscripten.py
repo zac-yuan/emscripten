@@ -659,8 +659,6 @@ def get_exported_implemented_functions(all_exported_functions, all_implemented, 
       funcs += ['stackAlloc', 'stackSave', 'stackRestore', 'establishStackSpace']
     if shared.Settings.SAFE_HEAP:
       funcs += ['setDynamicTop']
-    if not shared.Settings.RELOCATABLE:
-      funcs += ['setTempRet0', 'getTempRet0']
     if not (shared.Settings.WASM and shared.Settings.SIDE_MODULE):
       funcs += ['setThrew']
     if shared.Settings.EMTERPRETIFY:
@@ -1317,7 +1315,7 @@ function ftCall_%s(%s) {%s
 
 
 def create_basic_funcs(function_table_sigs):
-  basic_funcs = ['abort', 'assert', 'enlargeMemory', 'getTotalMemory']
+  basic_funcs = ['abort', 'assert', 'enlargeMemory', 'getTotalMemory', 'setTempRet0', 'getTempRet0']
   if shared.Settings.ABORTING_MALLOC:
     basic_funcs += ['abortOnCannotGrowMemory']
   if shared.Settings.STACK_OVERFLOW_CHECK:
@@ -1332,8 +1330,6 @@ def create_basic_funcs(function_table_sigs):
   if shared.Settings.ASSERTIONS:
     for sig in function_table_sigs:
       basic_funcs += ['nullFunc_' + sig]
-  if shared.Settings.RELOCATABLE:
-    basic_funcs += ['setTempRet0', 'getTempRet0']
 
   for sig in function_table_sigs:
     basic_funcs.append('invoke_%s' % sig)
@@ -1395,8 +1391,6 @@ def create_asm_runtime_funcs():
   funcs = []
   if not (shared.Settings.WASM and shared.Settings.SIDE_MODULE):
     funcs += ['stackAlloc', 'stackSave', 'stackRestore', 'establishStackSpace', 'setThrew']
-  if not shared.Settings.RELOCATABLE:
-    funcs += ['setTempRet0', 'getTempRet0']
   if shared.Settings.SAFE_HEAP:
     funcs += ['setDynamicTop']
   if shared.Settings.ONLY_MY_CODE:
@@ -1650,17 +1644,6 @@ function SAFE_FT_MASK(value, mask) {
 }
 ''')
 
-  if not shared.Settings.RELOCATABLE:
-    funcs.append('''
-function setTempRet0(value) {
-  value = value|0;
-  tempRet0 = value;
-}
-function getTempRet0() {
-  return tempRet0|0;
-}
-''')
-
   return funcs
 
 
@@ -1706,9 +1689,6 @@ def create_asm_temp_vars():
   var nan = global%s, inf = global%s;
   var tempInt = 0, tempBigInt = 0, tempBigIntS = 0, tempValue = 0, tempDouble = 0.0;
 ''' % (access_quote('NaN'), access_quote('Infinity'))
-
-  if not shared.Settings.RELOCATABLE:
-    rtn += 'var tempRet0 = 0;\n'
 
   return rtn
 
@@ -2091,7 +2071,7 @@ def create_em_js(forwarded_json, metadata):
 
 
 def create_sending_wasm(invoke_funcs, jscall_sigs, forwarded_json, metadata):
-  basic_funcs = ['abort', 'assert', 'enlargeMemory', 'getTotalMemory']
+  basic_funcs = ['abort', 'assert', 'enlargeMemory', 'getTotalMemory', 'setTempRet0', 'getTempRet0']
   if shared.Settings.ABORTING_MALLOC:
     basic_funcs += ['abortOnCannotGrowMemory']
   if shared.Settings.SAFE_HEAP:
@@ -2167,12 +2147,6 @@ var stackRestore = Module['_stackRestore'];
 var establishStackSpace = Module['establishStackSpace'];
 ''')
 
-  # some runtime functionality may not have been generated in
-  # the wasm; provide a JS shim for it
-  for name in ['setTempRet0', 'getTempRet0', 'stackSave', 'stackRestore', 'stackAlloc']:
-    if name not in exported_implemented_functions:
-      module.append('var %s;\n' % name)
-
   module.append(invoke_wrappers)
   module.append(jscall_funcs)
   return module
@@ -2239,7 +2213,7 @@ def asmjs_mangle(name):
   Prepends '_' and replaces non-alphanumerics with '_'.
   Used by wasm backend for JS library consistency with asm.js.
   """
-  library_functions_in_module = ('setThrew', 'setTempRet0', 'getTempRet0')
+  library_functions_in_module = ('setThrew',)
   if name.startswith('dynCall_'):
     return name
   if name in library_functions_in_module:
